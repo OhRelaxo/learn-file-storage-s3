@@ -70,7 +70,11 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 
 	fileExtension := getFileExtension(mediaType)
-	assetsPath := getAssetsPath(videoID, fileExtension, cfg.assetsRoot)
+	assetsPath, sRdmNum, err := getAssetsPath(fileExtension, cfg.assetsRoot)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to get file path", err)
+		return
+	}
 
 	newFile, err := os.Create(assetsPath)
 	if err != nil {
@@ -84,7 +88,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	thumbnailUrl := fmt.Sprintf("http://localhost:%v/assets/%v%v", cfg.port, videoID, fileExtension)
+	thumbnailUrl := fmt.Sprintf("http://localhost:%v/assets/%v%v", cfg.port, sRdmNum, fileExtension)
 	video.ThumbnailURL = &thumbnailUrl
 	video.UpdatedAt = time.Now()
 	err = cfg.db.UpdateVideo(video)

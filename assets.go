@@ -1,12 +1,12 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/google/uuid"
 )
 
 func (cfg apiConfig) ensureAssetsDir() error {
@@ -16,8 +16,12 @@ func (cfg apiConfig) ensureAssetsDir() error {
 	return nil
 }
 
-func getAssetsPath(videoID uuid.UUID, fileExtension, assetsPath string) string {
-	return filepath.Join(assetsPath, fmt.Sprintf("%v%v", videoID, fileExtension))
+func getAssetsPath(fileExtension, assetsPath string) (string, string, error) {
+	sRdmNum, err := getRdmNum()
+	if err != nil {
+		return "", "", err
+	}
+	return filepath.Join(assetsPath, fmt.Sprintf("%v%v", sRdmNum, fileExtension)), sRdmNum, nil
 }
 
 func getFileExtension(contentType string) string {
@@ -26,4 +30,14 @@ func getFileExtension(contentType string) string {
 		return ".bin"
 	}
 	return "." + fileExtension[1]
+}
+
+func getRdmNum() (string, error) {
+	rdmNum := make([]byte, 32)
+	_, err := rand.Read(rdmNum)
+	if err != nil {
+		return "", err
+	}
+	b64Enc := base64.RawURLEncoding
+	return b64Enc.EncodeToString(rdmNum), nil
 }
