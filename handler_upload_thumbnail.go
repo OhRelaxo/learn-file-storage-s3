@@ -42,12 +42,12 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	multipartFile, multipartHeader, err := r.FormFile("thumbnail")
+	file, fileHeader, err := r.FormFile("thumbnail")
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Unable to parse from file", err)
 		return
 	}
-	defer multipartFile.Close()
+	defer file.Close()
 
 	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
@@ -59,7 +59,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	mediaType, _, err := mime.ParseMediaType(multipartHeader.Header.Get("Content-Type"))
+	mediaType, _, err := mime.ParseMediaType(fileHeader.Header.Get("Content-Type"))
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid Content-Type", err)
 		return
@@ -81,8 +81,9 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusInternalServerError, "Failed to create file on server", err)
 		return
 	}
+	defer newFile.Close()
 
-	_, err = io.Copy(newFile, multipartFile)
+	_, err = io.Copy(newFile, file)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error while coping data to file", err)
 		return
