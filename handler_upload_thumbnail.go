@@ -1,13 +1,13 @@
 package main
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
-	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/database"
 	"github.com/google/uuid"
 )
 
@@ -43,53 +43,44 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 
 	multipartFile, multipartHeader, err := r.FormFile("thumbnail")
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "unable to parse from file", err)
+		respondWithError(w, http.StatusBadRequest, "Unable to parse from file", err)
 		return
 	}
 	defer multipartFile.Close()
 
 	fileContentType := multipartHeader.Header.Get("Content-Type")
+	if fileContentType == "" {
+		respondWithError(w, http.StatusBadRequest, "Missing Content-Type for thumbnail", nil)
+		return
+	}
 
-	rawFile, err := io.ReadAll(multipartFile)
+	data, err := io.ReadAll(multipartFile)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "failed to read file", err)
+		respondWithError(w, http.StatusInternalServerError, "Failed to read file", err)
 		return
 	}
 
-	metadata, err := cfg.db.GetVideo(videoID)
+	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "no video with the given id was found", err)
+		respondWithError(w, http.StatusInternalServerError, "Couldn't find video", err)
 		return
 	}
-	if metadata.UserID != userID {
-		respondWithError(w, http.StatusForbidden, "you have no access to that video", err)
+	if video.UserID != userID {
+		respondWithError(w, http.StatusUnauthorized, "Not authorized to update this video", nil)
 		return
 	}
 
-	newThumbnail := thumbnail{
-		data:      rawFile,
-		mediaType: fileContentType,
-	}
-	videoThumbnails[videoID] = newThumbnail
+	sData := base64.StdEncoding.EncodeToString(data)
 
-	thumbnailUrl := "http://localhost:8091/api/thumbnails/" + videoIDString
-	newVideo := database.Video{
-		ID:           metadata.ID,
-		CreatedAt:    metadata.CreatedAt,
-		UpdatedAt:    time.Now(),
-		ThumbnailURL: &thumbnailUrl,
-		VideoURL:     nil,
-		CreateVideoParams: database.CreateVideoParams{
-			Title:       metadata.Title,
-			Description: metadata.Description,
-			UserID:      metadata.UserID,
-		},
-	}
-	err = cfg.db.UpdateVideo(newVideo)
+	dataUrl := fmt.Sprintf("data:%v;base64,%v", fileContentType, sData)
+	video.ThumbnailURL = &dataUrl
+	video.UpdatedAt = time.Now()
+	err = cfg.db.UpdateVideo(video)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "failed to update metadata of the video", err)
+		respondWithError(w, http.StatusInternalServerError, "Failed to update video", err)
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, newVideo)
+	fmt.Println(video)
+	respondWithJSON(w, http.StatusOK, video)
 }
