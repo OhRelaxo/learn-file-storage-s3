@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"time"
@@ -48,12 +49,6 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	defer multipartFile.Close()
 
-	fileContentType := multipartHeader.Header.Get("Content-Type")
-	if fileContentType == "" {
-		respondWithError(w, http.StatusBadRequest, "Missing Content-Type for thumbnail", nil)
-		return
-	}
-
 	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't find video", err)
@@ -64,7 +59,17 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	fileExtension := getFileExtension(fileContentType)
+	mediaType, _, err := mime.ParseMediaType(multipartHeader.Header.Get("Content-Type"))
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid Content-Type", err)
+		return
+	}
+	if mediaType != "image/jpeg" && mediaType != "image/png" {
+		respondWithError(w, http.StatusBadRequest, "Please uploade a png or jpeg", err)
+		return
+	}
+
+	fileExtension := getFileExtension(mediaType)
 	assetsPath := getAssetsPath(videoID, fileExtension, cfg.assetsRoot)
 
 	newFile, err := os.Create(assetsPath)
@@ -79,7 +84,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	thumbnailUrl := fmt.Sprintf("http://localhost:%v/assets/%v.%v", cfg.port, videoID, fileExtension)
+	thumbnailUrl := fmt.Sprintf("http://localhost:%v/assets/%v%v", cfg.port, videoID, fileExtension)
 	video.ThumbnailURL = &thumbnailUrl
 	video.UpdatedAt = time.Now()
 	err = cfg.db.UpdateVideo(video)
