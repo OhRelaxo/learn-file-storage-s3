@@ -42,7 +42,6 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, http.StatusInternalServerError, "Couldn't find video", err)
 		return
 	}
-
 	if video.UserID != userID {
 		respondWithError(w, http.StatusUnauthorized, "Not authorized to update this video", err)
 		return
@@ -70,12 +69,18 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, http.StatusInternalServerError, "Failed to create temp file", err)
 		return
 	}
+	defer os.Remove(tmpFile.Name())
 	defer tmpFile.Close()
-	defer os.Remove("tubely-upload.mp4")
 
 	_, err = io.Copy(tmpFile, file)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Failed to copy to file", err)
+		return
+	}
+
+	aspectRatio, err := getVideoAspectRatio(tmpFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't get aspect ratio", err)
 		return
 	}
 
@@ -85,16 +90,29 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	rdmNum, err := getRdmNum()
+	moovTmpFilePath, err := processVideoForFastStart(tmpFile.Name())
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Failed to create random number", err)
+		respondWithError(w, http.StatusInternalServerError, "Failed to move the moov atom", err)
 		return
 	}
-	fileKey := rdmNum + ".mp4"
+
+	moovTmpFile, err := os.OpenFile(moovTmpFilePath, os.O_RDONLY, 0444)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to read file", err)
+		return
+	}
+	defer os.Remove(moovTmpFile.Name())
+	defer moovTmpFile.Close()
+
+	fileKey, err := getFileKey(getFileExtension(mediaType), aspectRatio)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to generate file key", err)
+		return
+	}
 	_, err = cfg.s3Client.PutObject(r.Context(), &s3.PutObjectInput{
 		Bucket:      &cfg.s3Bucket,
 		Key:         &fileKey,
-		Body:        tmpFile,
+		Body:        moovTmpFile,
 		ContentType: &mediaType,
 	})
 	if err != nil {
@@ -102,11 +120,13 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	videoURL := fmt.Sprintf("https://%v.s3.%v.amazonaws.com/%v", cfg.s3Bucket, cfg.s3Region, fileKey)
+	videoURL := cfg.getVideoURL(fileKey)
 	video.VideoURL = &videoURL
 	err = cfg.db.UpdateVideo(video)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Failed to update database", err)
 		return
 	}
+
+	respondWithJSON(w, http.StatusOK, video)
 }

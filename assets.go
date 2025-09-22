@@ -16,6 +16,10 @@ func (cfg apiConfig) ensureAssetsDir() error {
 	return nil
 }
 
+func (cfg apiConfig) getVideoURL(fileKey string) string {
+	return fmt.Sprintf("https://%v.s3.%v.amazonaws.com/%v", cfg.s3Bucket, cfg.s3Region, fileKey)
+}
+
 func getAssetsPath(fileExtension, assetsPath string) (string, string, error) {
 	sRdmNum, err := getRdmNum()
 	if err != nil {
@@ -24,8 +28,8 @@ func getAssetsPath(fileExtension, assetsPath string) (string, string, error) {
 	return filepath.Join(assetsPath, fmt.Sprintf("%v%v", sRdmNum, fileExtension)), sRdmNum, nil
 }
 
-func getFileExtension(contentType string) string {
-	fileExtension := strings.Split(contentType, "/")
+func getFileExtension(mediaType string) string {
+	fileExtension := strings.Split(mediaType, "/")
 	if len(fileExtension) != 2 {
 		return ".bin"
 	}
@@ -40,4 +44,21 @@ func getRdmNum() (string, error) {
 	}
 	b64Enc := base64.RawURLEncoding
 	return b64Enc.EncodeToString(rdmNum), nil
+}
+
+func getFileKey(fileExtension, aspectRatio string) (string, error) {
+	rdmNum, err := getRdmNum()
+	if err != nil {
+		return "", err
+	}
+	var prefix string
+	switch aspectRatio {
+	case "16:9":
+		prefix = "landscape/"
+	case "9:16":
+		prefix = "portrait/"
+	default:
+		prefix = "other/"
+	}
+	return prefix + rdmNum + fileExtension, nil
 }
