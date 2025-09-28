@@ -17,7 +17,7 @@ func (cfg apiConfig) ensureAssetsDir() error {
 }
 
 func (cfg apiConfig) getVideoURL(fileKey string) string {
-	return fmt.Sprintf("https://%v.s3.%v.amazonaws.com/%v", cfg.s3Bucket, cfg.s3Region, fileKey)
+	return fmt.Sprintf("%v,%v", cfg.s3Bucket, fileKey)
 }
 
 func getAssetsPath(fileExtension, assetsPath string) (string, string, error) {
